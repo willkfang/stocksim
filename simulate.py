@@ -105,11 +105,11 @@ class Wallet():
 			self.transhist.append([date, 1, cost, nshares, self.cash])
 
 	def sell(self, cost, nshares, date):
-		totalprice = cost * nshares
-		self.cash = self.cash + totalprice
-		self.securities -= nshares
-		self.transhist.append([date, -1, cost, nshares, self.cash])
-
+		if self.securities - nshares >= 0:
+			totalprice = cost * nshares
+			self.cash = self.cash + totalprice
+			self.securities -= nshares
+			self.transhist.append([date, -1, cost, nshares, self.cash])
 
 	def print_wallet(self, price):
 		print "Cash: %f nshares: %f Total Worth: %f" %(self.cash, self.securities, self.return_worth(price))
@@ -130,6 +130,11 @@ class Simulation():
 
 		self.simhistory = []
 
+		#######Indicators
+		#SMA
+		self.SMA10 = self.ticker.calc_SMA(10)
+		self.SMA200 = self.ticker.calc_SMA(200)
+
 	def buy(self,i,nshares):
 		cost = self.ticker.daylist[i].return_close()
 		date = self.ticker.daylist[i].date
@@ -144,18 +149,39 @@ class Simulation():
 		self.wallet.sell(cost, nshares,date)
 
 
-	def buy_criteria(self,coefficients):
+	def buy_criteria(self,coefficients, i):
 		#Criteria to buy
+		SMA10 = self.SMA10[i-1]
+		price = self.ticker.daylist[i-1].return_close()
+		coef = coefficients
 
-		return True
+		crit = coef[0] * price + coef[1] * SMA10 
+		# print crit
+		return crit > 0
 
-	def sell_criteria(self,coefficients):
+	def sell_criteria(self,coefficients, i):
 		#Criteria to sell
+		SMA10 = self.SMA10[i-1]
+		price = self.ticker.daylist[i-1].return_close()
+		coef = coefficients
 
-		return True
+		crit = coef[0] * price + coef[1] * SMA10 
+
+		# print crit
+		return crit > 0
+
+
+	# def return_sma_value(self, SMA, date):
+	# 	value  = 0
+
+
+	# 	return value
 
 	def simulate(self, coefficients, IF):
 		self.wallet = Wallet(IF)
+		ncoef = len(coefficients)
+		buycoef = coefficients[0:ncoef/2]
+		sellcoef = coefficients[ncoef/2 -1 :-1]
 
 		for i in range(1,self.ticker.ndays):
 			#Test strategy, buy if cost is lower than previous day
@@ -167,25 +193,28 @@ class Simulation():
 			if i-1 < 0:
 				yestprice = self.ticker.daylist[0]
 
-			if self.buy_criteria(coefficients):
-				self.buy(i,2)
-			if self.sell_criteria(coefficients):
-				self.sell(i,2)
+			if self.buy_criteria(buycoef, i):
+				self.buy(i,5) #second is num shares bought. Should vary with indicators
+			
+			elif self.sell_criteria(sellcoef, i):
+				self.sell(i,5)
 
 
 			totalworth = self.wallet.return_worth(todayprice)
 			print "Date: %s, Today's price: %f, Yesterday's Price: %f, Wallet: %f" %(day, todayprice, yestprice, totalworth)
-			
+			# print self.SMA10[i]
 			# stdtime = time.mktime(datetime.datetime.strptime(day, "%m/%d/%Y").timetuple())
 			stdtime = datetime.datetime.strptime(day, "%m/%d/%Y").date()
-
+			# stdtime = datetime.datetime.strptime(day, "%y/%m/%d").date()
 			self.simhistory.append([stdtime, todayprice, self.wallet.securities, self.wallet.cash, self.wallet.return_stockworth(todayprice), totalworth])
 			self.wallet.print_wallet(todayprice)
 		# print self.wallet.print_transhist()
 		# print self.simhistory
 		self.simhistory = np.asarray(self.simhistory)
 		# print self.simhistory
+
 		return totalworth
+
 	def plotsimulation(self):
 		days = self.simhistory[:,0]
 		days2 = []
@@ -206,19 +235,23 @@ class Simulation():
 		plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%Y'))
 		plt.gca().xaxis.set_major_locator(mdates.DayLocator())
 		# plt.plot(days,price*4)
-		plt.plot(days,totalworth)
+		plt.plot(days,price)
 		plt.gcf().autofmt_xdate()
 
 def main():
-	coefficients = []
-	SPY = Ticker('spy1.csv')
-	SPY_5daySMA = SPY.calc_SMA(5)
-	SPY_10daySMA = SPY.calc_SMA(10)
+	coefficients = [1, -2, 3, 4]
+
+	SPY = Ticker('spy2.csv')
+	# SPY_5daySMA = SPY.calc_SMA(5)
+	# SPY_10daySMA = SPY.calc_SMA(10)
 	# plt.plot(SPY_5daySMA)
 	# plt.plot(SPY_10daySMA)
 	SPYSimulation = Simulation(SPY)
+	
 	SPYSimulation.simulate(coefficients, 1000)
-	SPYSimulation.plotsimulation()
+	
+
+	# SPYSimulation.plotsimulation()
 	plt.show()
 if __name__ == '__main__':
 	main()
